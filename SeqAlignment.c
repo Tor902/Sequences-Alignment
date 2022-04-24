@@ -21,8 +21,8 @@ int main(int argc, char *argv[])
     //MPI INIT
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &num_processes); 
-	
+    MPI_Comm_size(MPI_COMM_WORLD, &num_processes);
+
 
 	// ROOT PROCESS INIT
     if(my_rank == ROOT)
@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 		FILE* input = fopen(FILE_NAME, "r");
 		if(!input)
 			return -1;
-		
+
 		// READ WEIGHTS
 		fscanf(input, "%d %d %d %d", &weights[DOLLAR], &weights[PRECENT], &weights[HASH], &weights[SPACE]);
 
@@ -40,12 +40,12 @@ int main(int argc, char *argv[])
 
 		// READ THE AMOUNT OF SEQ2
 		fscanf(input, "%d", &seq2_arr_size);
-		
+
 		// MEM ALLOC + READ ALL SEQ2
 		seq2_arr = (char**)malloc(seq2_arr_size*(sizeof(char*)));
 		if(!seq2_arr)
 			return -1;
-		
+
 		for(int i=0 ; i<seq2_arr_size ; i++)
 		{
 			seq2_arr[i] = (char*)malloc(MAX_LEN_SEQ2*(sizeof(char)));
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 
 			fscanf(input, "%s", seq2_arr[i]);
 		}
-		fclose(input); 
+		fclose(input);
 
 
 	// CHECK INPUT
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
 		for(int i=0 ; i<seq2_arr_size ; i++)
 		{
 			if (!preprocess_and_check_input(seq2_arr[i], i, seq1_len))
-			{	
+			{
 				printf("EORROR in preprocess_and_check_input number %d\n",i);
 				return -1;
 			}
@@ -84,32 +84,32 @@ int main(int argc, char *argv[])
 		table = fill_table(weights, table);
 		seq2_optimal_results = mem_allocation_2d(seq2_optimal_results, seq2_arr_size, RES_CACHE_LEN);
 	}
-	
+
 	// BROADCAST SEQ1, WEIGHTS AND SCORES TABLE TO ALL PROCESSES
 	MPI_Bcast(&(table[0][0]), ALPHABET*ALPHABET, MPI_INT, ROOT, MPI_COMM_WORLD);
 	MPI_Bcast(seq1, MAX_LEN_SEQ1, MPI_CHAR, ROOT, MPI_COMM_WORLD);
 	MPI_Bcast(weights, WEIGHTS, MPI_INT, ROOT, MPI_COMM_WORLD);
-	
+
 
 	// START
 	if(my_rank == ROOT)
 	{
 		timer = MPI_Wtime();
-		seq2_optimal_results = master_process(seq1, seq2_arr, seq2_arr_size, num_processes, seq2_optimal_results);	
+		seq2_optimal_results = master_process(seq1, seq2_arr, seq2_arr_size, num_processes, seq2_optimal_results);
 		timer = MPI_Wtime() - timer;
 	}
 	else
 	{
 		worker_process(seq1, weights, table);
 	}
-	
+
 	// Final Steps:
 	if(my_rank == ROOT)
 	{
 		// Print results to File + time
 		printf("Time to calc Parallel is %lf seconds\n", timer);
-		print_all_optimal_results(seq1, seq2_optimal_results, seq2_arr_size);	
-	
+		print_all_optimal_results(seq1, seq2_optimal_results, seq2_arr_size);
+
 		// Free Memory
 		for (int i = 0; i < seq2_arr_size; i++)
 		{
@@ -134,15 +134,15 @@ int** master_process(char* seq1, char** seq2_arr, int seq2_arr_size, int num_pro
 	int tag = WORK;
 	int seq2_received=0 ,seq2_sent=0;
 	int worker_id;
-	int message=0;	
+	int message=0;
 	int *map_worker_2_seq;
 	int* buffer_ptr;
 
 	map_worker_2_seq = (int*)malloc(sizeof(int)*num_processes);
 	if(!map_worker_2_seq)
 		return 0;
-	
-	
+
+
 	// SEND ONE SEQ2 TO EACH PROCESS
 	for(worker_id=1 ; worker_id<num_processes ; worker_id++)
 	{
@@ -150,13 +150,13 @@ int** master_process(char* seq1, char** seq2_arr, int seq2_arr_size, int num_pro
 		map_worker_2_seq[worker_id] = seq2_sent;
 		seq2_sent++;
 	}
-	
+
 	// RECEIVE AND SEND MORE WORK (UNTIL ALL ARE SENT)
 	while(seq2_sent < seq2_arr_size)
 	{
 		if(seq2_sent >= seq2_arr_size - (num_processes-1))
 			tag = TERMINATE;
-		
+
 		MPI_Recv(&message, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 		buffer_ptr = seq2_optimal_results[map_worker_2_seq[status.MPI_SOURCE]];
 		MPI_Recv(buffer_ptr, RES_CACHE_LEN, MPI_INT, status.MPI_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
@@ -218,7 +218,7 @@ void worker_process(char* seq1, int* weights, int **table)
 			MPI_Send(&message, 1, MPI_INT, ROOT, tag, MPI_COMM_WORLD);
 			MPI_Send(optimal_res_CUDA, 3, MPI_INT, ROOT, tag, MPI_COMM_WORLD);
 		}
-		
+
 	}while(tag != TERMINATE);
 	//free
 	free(optimal_res_CUDA);
@@ -238,10 +238,10 @@ int* omp_alignment_score_offset_mutant(char* seq1,char* seq2, int* weights, int 
 	int thread_res[max_threads][RES_CACHE_LEN];
 	for(int i=0 ; i<max_threads; i++)
 		thread_res[i][SCORE] = INT_MIN;
-	
+
 	optimal_res[SCORE] = INT_MIN;
-		
-#pragma omp parallel for shared(seq1, seq2, weights, seq2_len, max_mutant, thread_res) firstprivate(index1, index2, score) 
+
+#pragma omp parallel for shared(seq1, seq2, weights, seq2_len, max_mutant, thread_res) firstprivate(index1, index2, score)
 		for(int offset=0 ; offset < max_offset ; offset++)
 		{
 			thread_id = omp_get_thread_num();
@@ -302,7 +302,7 @@ int** fill_table(int* weights, int** table)
 
 
 int check_group_similarity_hash(char hashX[ALPHABET][ITEM_MAX_LEN], char seq1_char, char seq2_char)
-{	
+{
 	int i;
 	int letter_index = seq1_char - 'A';
 	if(hashX[letter_index] == "")
@@ -332,7 +332,7 @@ int preprocess_and_check_input(char* secondary_sequence, int seq2_index, int seq
 		//option to check for a valid ascii a-z letter
 	}
 	return 1;
-	
+
 }
 
 
@@ -384,7 +384,7 @@ int** mem_allocation_2d(int** pointer, int n, int m)
 		}
 	}
 	return pointer;
-}	
+}
 
 
 int conti_mem_allocation_2d(int*** array, int n, int m)
@@ -403,7 +403,7 @@ int conti_mem_allocation_2d(int*** array, int n, int m)
     }
 
     /* set up the pointers into the contiguous memory */
-    for (int i=0; i<n; i++) 
+    for (int i=0; i<n; i++)
        (*array)[i] = &(p[i*m]);
 
     return 0;
@@ -418,140 +418,3 @@ void conti_mem_free_2d(int ***array)
     /* free the pointers into the memory */
     free(*array);
 }
-
-
-// ****Sequential Main****
-
-// int main(int argc, char *argv[])
-// {
-// 	double timer;
-//     int my_rank, num_processes;
-// 	int seq2_arr_size, seq1_len;
-// 	int* weights;
-// 	int** seq2_optimal_results;
-//  	int** table;
-
-//     char *seq1, **seq2_arr;
-
-// 	seq1 = (char*)malloc(sizeof(char)*MAX_LEN_SEQ1);
-// 	weights = (int*)malloc(sizeof(int)*WEIGHTS);
-// 	conti_mem_allocation_2d(&table,ALPHABET, ALPHABET);
-
-//     //MPI INIT
-//     MPI_Init(&argc, &argv);
-//     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-//     MPI_Comm_size(MPI_COMM_WORLD, &num_processes); 
-	
-
-// 	// READ INPUT
-//     FILE* input = fopen(FILE_NAME, "r");
-//     if(!input)
-//         return -1;
-    
-//     // READ WEIGHTS
-//     fscanf(input, "%d %d %d %d", &weights[DOLLAR], &weights[PRECENT], &weights[HASH], &weights[SPACE]);
-
-//     // READ SEQ1
-//     fscanf(input, "%s", seq1);
-
-//     // READ THE AMOUNT OF SEQ2
-//     fscanf(input, "%d", &seq2_arr_size);
-    
-//     // MEM ALLOC + READ ALL SEQ2
-//     seq2_arr = (char**)malloc(seq2_arr_size*sizeof(char*));
-//     if(!seq2_arr)
-//         return -1;
-    
-//     for(int i=0 ; i<seq2_arr_size ; i++)
-//     {
-//         seq2_arr[i] = (char*)malloc(MAX_LEN_SEQ2*(sizeof(char)));
-//         if(!seq2_arr[i])
-//             return -1;
-
-//         fscanf(input, "%s", seq2_arr[i]);
-//     }
-//     fclose(input); 
-
-
-// // CHECK INPUT
-//     // CHECK VALID SEQ1
-//     seq1_len = strlen(seq1);
-//     if(seq1_len > MAX_LEN_SEQ1)
-//         return -1;
-
-//     //CHECK IF AMOUNT OF SEQ2 IS LOWER THAN NUM PROCESSES
-//     if (seq2_arr_size < num_processes - 1)
-//     {
-//         printf("ERROR: THE PROGRAM HAS LESS SEQ2 THAN ACTIVE PROCESSES\n");
-//         return -1;
-//     }
-
-//     // UPPER CASE AND CHECK SEQ2
-//     for(int i=0 ; i<seq2_arr_size ; i++)
-//     {
-//         if (!preprocess_and_check_input(seq2_arr[i], i, seq1_len))
-//         {	
-//             printf("EORROR in preprocess_and_check_input number %d\n",i);
-//             return -1;
-//         }
-//     }
-
-//     // MEM ALLOC FOR OPTIMAL RESULTS
-//     table = fill_table(weights, table);
-//     seq2_optimal_results = mem_allocation_2d(seq2_optimal_results, seq2_arr_size, RES_CACHE_LEN);
-
-// 	int index1=0, index2=0, seq2_len;
-// 	int score=0, max_mutant = seq2_len;
-//     int max_offset;
-
-    
-// 	timer = MPI_Wtime();
-//     for(int i=0 ; i<seq2_arr_size ; i++)
-//     {
-// 		seq2_optimal_results[i][SCORE] = INT_MIN;
-//         seq2_len = strlen(seq2_arr[i]);
-//         max_mutant = seq2_len;
-//         max_offset = seq1_len - seq2_len;
-//         for(int offset=0 ; offset < max_offset ; offset++)
-//         {
-//             for(int mutant=1 ; mutant <= max_mutant ; mutant++)
-//             {
-//                 index1=offset;
-//                 for(index2=0 ; index2 < seq2_len ; index2++)
-//                 {
-//                     if(index2 == mutant && mutant != 0)
-//                         index1++;
-
-//                     score += table[seq1[index1]-'A'][seq2_arr[i][index2]-'A'];
-
-//                     index1++;
-//                 }
-
-//                 if(score > seq2_optimal_results[i][SCORE])
-//                 {
-//                     seq2_optimal_results[i][SCORE] = score;
-//                     seq2_optimal_results[i][OFFSET] = offset;
-//                     seq2_optimal_results[i][MUTANT] = mutant;
-//                 }
-//                 score=0;
-//             }
-//         }
-//     }
-
-// 	timer = MPI_Wtime() - timer;
-//     printf("\n");
-// 	printf("Time to calc sequential is %lf seconds\n", timer);
-
-//     // printf("Seq1:\n%s\n", seq1);
-//     printf("\nALL ALIGNMENTS:\n");
-//     for (int i = 0; i < seq2_arr_size; i++)
-//     {
-//         printf("SEQ2 no.%d\n",i+1);
-//         printf("score = %d , offset (n) = %d , mutation (k) = %d , \n", seq2_optimal_results[i][SCORE], seq2_optimal_results[i][OFFSET], seq2_optimal_results[i][MUTANT]);
-//         printf("\n");
-//     }
-
-// 	MPI_Finalize();
-// 	return 0;
-
-// }
